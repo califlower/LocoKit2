@@ -155,17 +155,41 @@ public final class TimelineProcessor {
     }
 
     private static func collectBetweenerMerges(for item: TimelineItem, in list: TimelineLinkedList, into merges: inout Set<Merge>) async throws {
-        if let next = await item.nextItem(in: list), try !item.isDataGap, try next.keepnessScore < item.keepnessScore {
-            if let nextNext = await next.nextItem(in: list), try !nextNext.isDataGap, try nextNext.keepnessScore > next.keepnessScore {
-                merges.insert(await Merge(keeper: item, betweener: next, deadman: nextNext, in: list))
-                merges.insert(await Merge(keeper: nextNext, betweener: next, deadman: item, in: list))
+        // Forward Direction
+        if let next = await item.nextItem(in: list),
+           try !item.isDataGap,
+           try next.keepnessScore < item.keepnessScore,
+           item.base.nextItemId == next.id  // Ensure item and next are adjacent
+        {
+            if let nextNext = await next.nextItem(in: list),
+               try !nextNext.isDataGap,
+               try nextNext.keepnessScore > next.keepnessScore,
+               next.base.nextItemId == nextNext.id  // Ensure next and nextNext are adjacent
+            {
+                // Ensure item and nextNext are adjacent after skipping next
+                if item.base.nextItemId == next.id && next.base.nextItemId == nextNext.id {
+                    merges.insert(await Merge(keeper: item, betweener: next, deadman: nextNext, in: list))
+                    merges.insert(await Merge(keeper: nextNext, betweener: next, deadman: item, in: list))
+                }
             }
         }
 
-        if let previous = await item.previousItem(in: list), try !item.isDataGap, try previous.keepnessScore < item.keepnessScore {
-            if let prevPrev = await previous.previousItem(in: list), try !prevPrev.isDataGap, try prevPrev.keepnessScore > previous.keepnessScore {
-                merges.insert(await Merge(keeper: item, betweener: previous, deadman: prevPrev, in: list))
-                merges.insert(await Merge(keeper: prevPrev, betweener: previous, deadman: item, in: list))
+        // Backward Direction
+        if let previous = await item.previousItem(in: list),
+           try !item.isDataGap,
+           try previous.keepnessScore < item.keepnessScore,
+           previous.base.nextItemId == item.id  // Ensure previous and item are adjacent
+        {
+            if let prevPrev = await previous.previousItem(in: list),
+               try !prevPrev.isDataGap,
+               try prevPrev.keepnessScore > previous.keepnessScore,
+               prevPrev.base.nextItemId == previous.id  // Ensure prevPrev and previous are adjacent
+            {
+                // Ensure prevPrev and item are adjacent after skipping previous
+                if prevPrev.base.nextItemId == previous.id && previous.base.nextItemId == item.id {
+                    merges.insert(await Merge(keeper: item, betweener: previous, deadman: prevPrev, in: list))
+                    merges.insert(await Merge(keeper: prevPrev, betweener: previous, deadman: item, in: list))
+                }
             }
         }
     }
@@ -178,7 +202,10 @@ public final class TimelineProcessor {
               try previous.keepnessScore > item.keepnessScore,
               try next.keepnessScore > item.keepnessScore,
               try !previous.isDataGap,
-              try !next.isDataGap
+              try !next.isDataGap,
+              // Ensure adjacency:
+              previous.base.nextItemId == item.id,
+              item.base.nextItemId == next.id
         else {
             return
         }
